@@ -40,6 +40,12 @@ data "aws_iam_policy_document" "lambda" {
       "ecs:ListClusters",
       "ecs:ListServices",
       "ecs:UpdateService",
+      "rds:DescribeDBClusters",
+      "rds:DescribeDBInstances",
+      "rds:StartDBCluster",
+      "rds:StartDBInstance",
+      "rds:StopDBCluster",
+      "rds:StopDBInstance",
     ]
     resources = ["*"]
   }

@@ -64,3 +64,45 @@ def asg_group():
         return autoscaling.describe_auto_scaling_groups(AutoScalingGroupNames=[name])["AutoScalingGroups"][0]
 
     return make
+
+
+@pytest.fixture
+def db():
+    rds = boto3.client("rds")
+
+    def make(name, tagged=True):
+        return rds.create_db_instance(
+            DBInstanceIdentifier=name,
+            DBInstanceClass="db.t3.micro",
+            Engine="postgres",
+            AllocatedStorage=20,
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+            Tags=[{"Key": TAG["key"], "Value": TAG["value"]}] if tagged else [],
+        )["DBInstance"]["DBInstanceArn"]
+
+    return make
+
+
+@pytest.fixture
+def aurora():
+    rds = boto3.client("rds")
+
+    def make(name, tagged=True):
+        arn = rds.create_db_cluster(
+            DBClusterIdentifier=name,
+            Engine="aurora-postgresql",
+            MasterUsername="admin",
+            MasterUserPassword="password123",
+            Tags=[{"Key": TAG["key"], "Value": TAG["value"]}] if tagged else [],
+        )["DBCluster"]["DBClusterArn"]
+        rds.create_db_instance(
+            DBInstanceIdentifier=f"{name}-1",
+            DBInstanceClass="db.t3.medium",
+            Engine="aurora-postgresql",
+            DBClusterIdentifier=name,
+            Tags=[{"Key": TAG["key"], "Value": TAG["value"]}] if tagged else [],
+        )
+        return arn
+
+    return make

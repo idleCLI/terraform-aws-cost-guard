@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
 
-from cost_guard import asg, ecs
+from cost_guard import asg, ecs, rds
 
-KINDS = {"asg": asg, "ecs": ecs}
+KINDS = {"asg": asg, "ecs": ecs, "rds": rds}
 
 # SNS rejects anything over 256 KB, and a big enough account will get there
 MAX_MESSAGE_BYTES = 256 * 1024

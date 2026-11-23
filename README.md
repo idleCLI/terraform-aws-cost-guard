@@ -1,10 +1,10 @@
 # terraform-aws-cost-guard
 
-Pauses tagged ECS services and ASGs when your monthly AWS spend crosses a budget, then puts them back exactly as they were. 
+Pauses tagged ECS services, ASGs, and RDS databases when your monthly AWS spend crosses a budget, then puts them back exactly as they were. 
 
 >Admittedly niche. It's for accounts with workloads you'd rather have off than spendy.
 
-Budget alert -> SNS -> Lambda. The function finds anything carrying the opt-in tag, records what it's running, and scales it to zero. Reports go to a second topic (not the one that triggers it, or it retriggers itself).
+Budget alert -> SNS -> Lambda. The function finds anything carrying the opt-in tag, records what it's running, and scales it to zero (or stops it, for databases). Reports go to a second topic (not the one that triggers it, or it retriggers itself).
 
 Killing spend when a budget blows is easy. Killing it in a way you'll leave switched on isn't. So nothing here deletes anything, and nothing gets touched unless you tagged it. Ships in dry-run mode.
 
@@ -16,7 +16,7 @@ The catch: the policy actions block new spend but leave everything already runni
 
 This finds things by tag at the moment it runs, so a new service is covered as soon as it's tagged. Restore puts back the real settings too (a service running 3 tasks comes back running 3, not just "on").
 
-RDS and Lambda handlers aren't written yet.
+The Lambda handler isn't written yet.
 
 ## Usage
 
@@ -56,11 +56,11 @@ $(terraform output -raw restore_command)
 
 Full example in `examples/basic`.
 
-The tag is the whole safety model. Discovery sweeps every cluster and ASG in the region, and the tag is the only thing that makes a resource a candidate. No exemption list, nothing to keep in sync, untagged is ignored. It also means the dry run is your blast radius: what it lists is what's at risk, and the list doesn't grow on its own.
+The tag is the whole safety model. Discovery sweeps every ECS cluster, ASG, and database in the region, and the tag is the only thing that makes a resource a candidate. No exemption list, nothing to keep in sync, untagged is ignored. It also means the dry run is your blast radius: what it lists is what's at risk, and the list doesn't grow on its own.
 
 ## How restore works
 
-Settings get written to DynamoDB before anything is paused. ECS is just the desired count. ASGs need min, max, and desired, because dropping desired alone does nothing (the group launches replacements to get back to min).
+Settings get written to DynamoDB before anything is paused. ECS is just the desired count. ASGs need min, max, and desired, because dropping desired alone does nothing (the group launches replacements to get back to min). RDS just needs to know whether it's an instance or an Aurora cluster. Aurora gets stopped as a whole cluster (its members can't be stopped one by one), so the member instances never show up on their own.
 
 The write is conditional on no record existing. That matters more than it sounds like it should: someone scales a service back up by hand, the budget fires again a day later, and a fresh snapshot would record whatever it happened to be at that moment. Keeping the first one means restore still has the real number.
 
@@ -91,7 +91,11 @@ Reports over the 256 KB SNS limit get truncated, with a pointer to the logs.
 
 ## Limitations
 
-ECS and ASGs only, in one region (the one you deployed to). RDS and Lambda are next.
+ECS, ASGs, and RDS only, in one region (the one you deployed to). Lambda is next.
+
+AWS starts a stopped database again on its own after 7 days. Nothing here re-stops it, so a pause that runs into the next week stops holding for RDS. Restore is fine with this (a database that's already running counts as restored).
+
+Some databases can't be stopped at all (read replicas, for one). They show up as FAILED in the report and are left running.
 
 Budget data refreshes up to 3x a day, usually 8 to 12 hours apart. Something can burn half a day of money before the alert fires. Backstop, not a circuit breaker.
 
@@ -109,7 +113,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-Runs against [moto](https://github.com/getmoto/moto), so no AWS account and no credentials. Covers a pause/restore round trip for both resource types, the double-pause case, a pause that fails partway, a write that can't be recorded, and the dry run leaving everything alone.
+Runs against [moto](https://github.com/getmoto/moto), so no AWS account and no credentials. Covers a pause/restore round trip for every resource type (Aurora included), a database AWS restarted on its own, the double-pause case, a pause that fails partway, a write that can't be recorded, and the dry run leaving everything alone.
 
 Terraform has its own tests against a mocked provider:
 
